@@ -157,7 +157,7 @@ class AsyncStream extends Stream implements AsyncStreamInterface
      * @override
      * @inheritDoc
      */
-    public function write($text)
+    public function write($text = '')
     {
         if (!$this->writable)
         {
