@@ -1,6 +1,6 @@
 <?php
 
-namespace Kraken\Stream;
+namespace Dazzle\Stream;
 
 /**
  * @event error : callable(object, Error|Exception)

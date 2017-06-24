@@ -1,10 +1,10 @@
 <?php
 
-namespace Kraken\Stream;
+namespace Dazzle\Stream;
 
-use Kraken\Throwable\Exception\Runtime\ReadException;
-use Kraken\Throwable\Exception\Runtime\WriteException;
-use Kraken\Throwable\Exception\Logic\InvalidArgumentException;
+use Dazzle\Throwable\Exception\Runtime\ReadException;
+use Dazzle\Throwable\Exception\Runtime\WriteException;
+use Dazzle\Throwable\Exception\Logic\InvalidArgumentException;
 
 class Stream extends StreamSeeker implements StreamInterface
 {

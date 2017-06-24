@@ -1,6 +1,6 @@
 <?php
 
-namespace Kraken\Stream;
+namespace Dazzle\Stream;
 
 interface AsyncStreamInterface extends AsyncStreamWriterInterface, AsyncStreamReaderInterface
 {}

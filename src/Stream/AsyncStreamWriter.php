@@ -1,18 +1,17 @@
 <?php
 
-namespace Kraken\Stream;
+namespace Dazzle\Stream;
 
-use Kraken\Throwable\Exception\Runtime\ReadException;
-use Kraken\Throwable\Exception\Runtime\WriteException;
-use Kraken\Throwable\Exception\Logic\InvalidArgumentException;
-use Kraken\Loop\LoopAwareTrait;
-use Kraken\Loop\LoopInterface;
-use Kraken\Util\Buffer\Buffer;
-use Kraken\Util\Buffer\BufferInterface;
+use Dazzle\Throwable\Exception\Runtime\WriteException;
+use Dazzle\Throwable\Exception\Logic\InvalidArgumentException;
+use Dazzle\Loop\LoopAwareTrait;
+use Dazzle\Loop\LoopInterface;
+use Dazzle\Util\Buffer\Buffer;
+use Dazzle\Util\Buffer\BufferInterface;
 use Error;
 use Exception;
 
-class AsyncStream extends Stream implements AsyncStreamInterface
+class AsyncStreamWriter extends StreamWriter implements AsyncStreamWriterInterface
 {
     use LoopAwareTrait;
 
@@ -20,16 +19,6 @@ class AsyncStream extends Stream implements AsyncStreamInterface
      * @var bool
      */
     protected $writing;
-
-    /**
-     * @var bool
-     */
-    protected $reading;
-
-    /**
-     * @var bool
-     */
-    protected $readingStarted;
 
     /**
      * @var bool
@@ -51,11 +40,6 @@ class AsyncStream extends Stream implements AsyncStreamInterface
     {
         parent::__construct($resource, $autoClose);
 
-        if (function_exists('stream_set_read_buffer'))
-        {
-            stream_set_read_buffer($this->resource, 0);
-        }
-
         if (function_exists('stream_set_write_buffer'))
         {
             stream_set_write_buffer($this->resource, 0);
@@ -63,8 +47,6 @@ class AsyncStream extends Stream implements AsyncStreamInterface
 
         $this->loop = $loop;
         $this->writing = false;
-        $this->reading = false;
-        $this->readingStarted = false;
         $this->paused = true;
         $this->buffer = new Buffer();
 
@@ -80,8 +62,6 @@ class AsyncStream extends Stream implements AsyncStreamInterface
 
         unset($this->loop);
         unset($this->writing);
-        unset($this->reading);
-        unset($this->readingStarted);
         unset($this->paused);
         unset($this->buffer);
     }
@@ -123,9 +103,7 @@ class AsyncStream extends Stream implements AsyncStreamInterface
         {
             $this->paused = true;
             $this->writing = false;
-            $this->reading = false;
             $this->loop->removeWriteStream($this->resource);
-            $this->loop->removeReadStream($this->resource);
         }
     }
 
@@ -135,17 +113,10 @@ class AsyncStream extends Stream implements AsyncStreamInterface
      */
     public function resume()
     {
-        if (($this->writable || $this->readable) && $this->paused)
+        if ($this->writable && $this->paused)
         {
             $this->paused = false;
-
-            if ($this->readable && $this->readingStarted)
-            {
-                $this->reading = true;
-                $this->loop->addReadStream($this->resource, $this->getHandleReadFunction());
-            }
-
-            if ($this->writable && $this->buffer->isEmpty() === false)
+            if ($this->buffer->isEmpty() === false)
             {
                 $this->writing = true;
                 $this->loop->addWriteStream($this->resource, $this->getHandleWriteFunction());
@@ -175,29 +146,6 @@ class AsyncStream extends Stream implements AsyncStreamInterface
         }
 
         return $this->buffer->length() < $this->bufferSize;
-    }
-
-    /**
-     * @override
-     * @inheritDoc
-     */
-    public function read($length = null)
-    {
-        if (!$this->readable)
-        {
-            return $this->throwAndEmitException(
-                new ReadException('Stream is no longer readable.')
-            );
-        }
-
-        if (!$this->reading && !$this->paused)
-        {
-            $this->reading = true;
-            $this->readingStarted = true;
-            $this->loop->addReadStream($this->resource, $this->getHandleReadFunction());
-        }
-
-        return '';
     }
 
     /**
@@ -259,35 +207,6 @@ class AsyncStream extends Stream implements AsyncStreamInterface
     }
 
     /**
-     * Handle the incoming stream.
-     *
-     * @internal
-     */
-    public function handleRead()
-    {
-        $length = $this->bufferSize;
-        $ret = fread($this->resource, $length);
-
-        if ($ret === false)
-        {
-            $this->emit('error', [ $this, new ReadException('Error occurred while reading from the stream resource.') ]);
-            return;
-        }
-
-        if ($ret !== '')
-        {
-            $this->emit('data', [ $this, $ret ]);
-
-            if (strlen($ret) < $length)
-            {
-                $this->loop->removeReadStream($this->resource);
-                $this->reading = false;
-                $this->emit('end', [ $this ]);
-            }
-        }
-    }
-
-    /**
      * Handle close.
      *
      * @internal
@@ -297,16 +216,6 @@ class AsyncStream extends Stream implements AsyncStreamInterface
         $this->pause();
 
         parent::handleClose();
-    }
-
-    /**
-     * Get function that should be invoked on read event.
-     *
-     * @return callable
-     */
-    protected function getHandleReadFunction()
-    {
-        return [ $this, 'handleRead' ];
     }
 
     /**

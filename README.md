@@ -1,19 +1,20 @@
-# Kraken Stream Component
+# Dazzle Async Stream
 
-[![Build Status](https://travis-ci.org/kraken-php/framework.svg)](https://travis-ci.org/kraken-php/framework)
-[![Total Downloads](https://poser.pugx.org/kraken-php/stream/downloads)](https://packagist.org/packages/kraken-php/stream) 
-[![Latest Stable Version](https://poser.pugx.org/kraken-php/stream/v/stable)](https://packagist.org/packages/kraken-php/stream) 
-[![Latest Unstable Version](https://poser.pugx.org/kraken-php/stream/v/unstable)](https://packagist.org/packages/kraken-php/stream) 
-[![License](https://poser.pugx.org/kraken-php/framework/license)](https://packagist.org/packages/kraken-php/framework)
-[![Kraken Compatible](https://img.shields.io/badge/kraken-compatible-6b02af.svg)](https://github.com/kraken-php/framework)
+[![Build Status](https://travis-ci.org/dazzle-php/stream.svg)](https://travis-ci.org/dazzle-php/stream)
+[![Code Coverage](https://scrutinizer-ci.com/g/dazzle-php/stream/badges/coverage.png?b=master)](https://scrutinizer-ci.com/g/dazzle-php/stream/?branch=master)
+[![Code Quality](https://scrutinizer-ci.com/g/dazzle-php/stream/badges/quality-score.png?b=master)](https://scrutinizer-ci.com/g/dazzle-php/stream/?branch=master)
+[![Latest Stable Version](https://poser.pugx.org/dazzle-php/stream/v/stable)](https://packagist.org/packages/dazzle-php/stream) 
+[![Latest Unstable Version](https://poser.pugx.org/dazzle-php/stream/v/unstable)](https://packagist.org/packages/dazzle-php/stream) 
+[![License](https://poser.pugx.org/dazzle-php/stream/license)](https://packagist.org/packages/dazzle-php/stream/license)
 
-> **Note:** This repository is a part of [Kraken Framework][3], but **can be used freely as standalone library**. If you 
-are interested in more asynchronous components for PHP, check out the rest of [Kraken repository][5] or see our 
-[asynchronous application skeleton][4] example.
+<br>
+<p align="center">
+<img src="https://avatars0.githubusercontent.com/u/29509136?v=3&s=150" />
+</p>
 
 ## Description
 
-Stream is a component that provides consistent interface for streams and allows asynchronous writing and reading.
+Dazzle Stream is a component that provides consistent interface for streams and allows asynchronous writing and reading.
 
 ## Feature Highlights
 
@@ -21,12 +22,7 @@ Stream features:
 
 * Consistent interface for using streams,
 * Implementation of asynchronous and synchronous streams,
-* Kraken Framework compatibility,
 * ...and more.
-
-## Examples
-
-See more examples in [official documentation][2].
 
 ## Requirements
 
@@ -36,27 +32,22 @@ See more examples in [official documentation][2].
 ## Installation
 
 ```
-composer require kraken-php/stream
+$> composer require dazzle-php/stream
 ```
 
 ## Tests
 
-Tests are provided within our write-only [Framework repository][3].
-
-## Documentation
-
-Documentation for this module can be found in the [official documentation][2].
+```
+$> vendor/bin/phpunit -d memory_limit=1024M
+```
 
 ## Contributing
 
-This library is read-only subtree split of Kraken Framework. To make contributions, please go to [Framework repository][3].
+Thank you for considering contributing to this repository! The contribution guide can be found in the [contribution tips][1].
 
 ## License
 
-This library licensed under the MIT license, see more information in [Kraken Framework][3] license section.
+Dazzle Framework is open-sourced software licensed under the [MIT license][2].
 
-[1]: http://kraken-php.com
-[2]: http://kraken-php.com/docs/api-stream
-[3]: https://github.com/kraken-php/framework
-[4]: https://github.com/kraken-php/kraken
-[5]: https://github.com/kraken-php
+[1]: https://github.com/dazzle-php/stream/blob/master/CONTRIBUTING.md
+[2]: http://opensource.org/licenses/MIT

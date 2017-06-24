@@ -1,10 +1,10 @@
 <?php
 
-namespace Kraken\Stream;
+namespace Dazzle\Stream;
 
-use Kraken\Event\EventEmitterInterface;
-use Kraken\Throwable\Exception\Runtime\ReadException;
-use Kraken\Throwable\Exception\Runtime\WriteException;
+use Dazzle\Event\EventEmitterInterface;
+use Dazzle\Throwable\Exception\Runtime\ReadException;
+use Dazzle\Throwable\Exception\Runtime\WriteException;
 
 /**
  * @event seek : callable(object, int)

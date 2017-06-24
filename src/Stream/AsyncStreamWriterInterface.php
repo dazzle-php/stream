@@ -1,8 +1,8 @@
 <?php
 
-namespace Kraken\Stream;
+namespace Dazzle\Stream;
 
-use Kraken\Loop\LoopResourceInterface;
+use Dazzle\Loop\LoopResourceInterface;
 
 interface AsyncStreamWriterInterface extends StreamWriterInterface, LoopResourceInterface
 {}

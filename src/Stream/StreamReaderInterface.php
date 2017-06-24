@@ -1,8 +1,8 @@
 <?php
 
-namespace Kraken\Stream;
+namespace Dazzle\Stream;
 
-use Kraken\Event\EventEmitterInterface;
+use Dazzle\Event\EventEmitterInterface;
 
 /**
  * @event data : callable(object, string)
