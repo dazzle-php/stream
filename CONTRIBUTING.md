@@ -1,6 +1,6 @@
 # Contributing
 
-Contributions are **welcome** and accepted via **Pull Requests** on [GitHub](https://github.com/dazzle-php/throwable).
+Contributions are **welcome** and accepted via **Pull Requests** on [GitHub](https://github.com/dazzle-php/stream).
 
 ## Pull Requests
 
