@@ -5,36 +5,70 @@ namespace Dazzle\Stream;
 use Dazzle\Throwable\Exception\Runtime\ReadException;
 use Dazzle\Throwable\Exception\Runtime\WriteException;
 use Dazzle\Throwable\Exception\Logic\InvalidArgumentException;
+use Dazzle\Loop\LoopAwareTrait;
+use Dazzle\Loop\LoopInterface;
+use Dazzle\Util\Buffer\Buffer;
+use Dazzle\Util\Buffer\BufferInterface;
+use Error;
+use Exception;
 
-class Stream extends StreamSeeker implements StreamInterface
+class Stream extends Sync\Stream implements StreamInterface
 {
-    /**
-     * @var bool
-     */
-    protected $readable;
+    use LoopAwareTrait;
 
     /**
      * @var bool
      */
-    protected $writable;
+    protected $writing;
 
     /**
-     * @var int
+     * @var bool
      */
-    protected $bufferSize;
+    protected $reading;
+
+    /**
+     * @var bool
+     */
+    protected $readingStarted;
+
+    /**
+     * @var bool
+     */
+    protected $paused;
+
+    /**
+     * @var BufferInterface
+     */
+    protected $buffer;
 
     /**
      * @param resource $resource
+     * @param LoopInterface $loop
      * @param bool $autoClose
      * @throws InvalidArgumentException
      */
-    public function __construct($resource, $autoClose = true)
+    public function __construct($resource, LoopInterface $loop, $autoClose = true)
     {
         parent::__construct($resource, $autoClose);
 
-        $this->readable = true;
-        $this->writable = true;
-        $this->bufferSize = 4096;
+        if (function_exists('stream_set_read_buffer'))
+        {
+            stream_set_read_buffer($this->resource, 0);
+        }
+
+        if (function_exists('stream_set_write_buffer'))
+        {
+            stream_set_write_buffer($this->resource, 0);
+        }
+
+        $this->loop = $loop;
+        $this->writing = false;
+        $this->reading = false;
+        $this->readingStarted = false;
+        $this->paused = true;
+        $this->buffer = new Buffer();
+
+        $this->resume();
     }
 
     /**
@@ -42,29 +76,23 @@ class Stream extends StreamSeeker implements StreamInterface
      */
     public function __destruct()
     {
-        unset($this->readable);
-        unset($this->writable);
-        unset($this->bufferSize);
-
         parent::__destruct();
+
+        unset($this->loop);
+        unset($this->writing);
+        unset($this->reading);
+        unset($this->readingStarted);
+        unset($this->paused);
+        unset($this->buffer);
     }
 
     /**
      * @override
      * @inheritDoc
      */
-    public function isReadable()
+    public function isPaused()
     {
-        return $this->readable;
-    }
-
-    /**
-     * @override
-     * @inheritDoc
-     */
-    public function isWritable()
-    {
-        return $this->writable;
+        return $this->paused;
     }
 
     /**
@@ -89,6 +117,46 @@ class Stream extends StreamSeeker implements StreamInterface
      * @override
      * @inheritDoc
      */
+    public function pause()
+    {
+        if (!$this->paused)
+        {
+            $this->paused = true;
+            $this->writing = false;
+            $this->reading = false;
+            $this->loop->removeWriteStream($this->resource);
+            $this->loop->removeReadStream($this->resource);
+        }
+    }
+
+    /**
+     * @override
+     * @inheritDoc
+     */
+    public function resume()
+    {
+        if (($this->writable || $this->readable) && $this->paused)
+        {
+            $this->paused = false;
+
+            if ($this->readable && $this->readingStarted)
+            {
+                $this->reading = true;
+                $this->loop->addReadStream($this->resource, $this->getHandleReadFunction());
+            }
+
+            if ($this->writable && $this->buffer->isEmpty() === false)
+            {
+                $this->writing = true;
+                $this->loop->addWriteStream($this->resource, $this->getHandleWriteFunction());
+            }
+        }
+    }
+
+    /**
+     * @override
+     * @inheritDoc
+     */
     public function write($text = '')
     {
         if (!$this->writable)
@@ -98,19 +166,15 @@ class Stream extends StreamSeeker implements StreamInterface
             );
         }
 
-        $sent = fwrite($this->resource, $text);
+        $this->buffer->push($text);
 
-        if ($sent === false)
+        if (!$this->writing && !$this->paused)
         {
-            return $this->throwAndEmitException(
-                new WriteException('Error occurred while writing to the stream resource.')
-            );
+            $this->writing = true;
+            $this->loop->addWriteStream($this->resource, $this->getHandleWriteFunction());
         }
 
-        $this->emit('drain', [ $this ]);
-        $this->emit('finish', [ $this ]);
-
-        return true;
+        return $this->buffer->length() < $this->bufferSize;
     }
 
     /**
@@ -126,30 +190,14 @@ class Stream extends StreamSeeker implements StreamInterface
             );
         }
 
-        if ($length === null)
+        if (!$this->reading && !$this->paused)
         {
-            $length = $this->bufferSize;
+            $this->reading = true;
+            $this->readingStarted = true;
+            $this->loop->addReadStream($this->resource, $this->getHandleReadFunction());
         }
 
-        $ret = fread($this->resource, $length);
-
-        if ($ret === false)
-        {
-            return $this->throwAndEmitException(
-                new ReadException('Cannot read stream.')
-            );
-        }
-        else if ($ret !== '')
-        {
-            $this->emit('data', [ $this, $ret ]);
-
-            if (strlen($ret) < $length)
-            {
-                $this->emit('end', [ $this ]);
-            }
-        }
-
-        return $ret;
+        return '';
     }
 
     /**
@@ -167,8 +215,131 @@ class Stream extends StreamSeeker implements StreamInterface
         $this->readable = false;
         $this->writable = false;
 
+        if ($this->buffer->isEmpty() === false)
+        {
+            $this->writeEnd();
+        }
+
         $this->emit('close', [ $this ]);
         $this->handleClose();
         $this->emit('done', [ $this ]);
+    }
+
+    /**
+     * Handle the outcoming stream.
+     *
+     * @internal
+     */
+    public function handleWrite()
+    {
+        $text = $this->buffer->peek();
+        $sent = fwrite($this->resource, $text, $this->bufferSize);
+
+        if ($sent === false)
+        {
+            $this->emit('error', [ $this, new WriteException('Error occurred while writing to the stream resource.') ]);
+            return;
+        }
+
+        $lenBefore = strlen($text);
+        $lenAfter = $lenBefore - $sent;
+        $this->buffer->remove($sent);
+
+        if ($lenAfter > 0 && $lenBefore >= $this->bufferSize && $lenAfter < $this->bufferSize)
+        {
+            $this->emit('drain', [ $this ]);
+        }
+        else if ($lenAfter === 0)
+        {
+            $this->loop->removeWriteStream($this->resource);
+            $this->writing = false;
+            $this->emit('drain', [ $this ]);
+            $this->emit('finish', [ $this ]);
+        }
+    }
+
+    /**
+     * Handle the incoming stream.
+     *
+     * @internal
+     */
+    public function handleRead()
+    {
+        $length = $this->bufferSize;
+        $ret = fread($this->resource, $length);
+
+        if ($ret === false)
+        {
+            $this->emit('error', [ $this, new ReadException('Error occurred while reading from the stream resource.') ]);
+            return;
+        }
+
+        if ($ret !== '')
+        {
+            $this->emit('data', [ $this, $ret ]);
+
+            if (strlen($ret) < $length)
+            {
+                $this->loop->removeReadStream($this->resource);
+                $this->reading = false;
+                $this->emit('end', [ $this ]);
+            }
+        }
+    }
+
+    /**
+     * Handle close.
+     *
+     * @internal
+     */
+    public function handleClose()
+    {
+        $this->pause();
+
+        parent::handleClose();
+    }
+
+    /**
+     * Get function that should be invoked on read event.
+     *
+     * @return callable
+     */
+    protected function getHandleReadFunction()
+    {
+        return [ $this, 'handleRead' ];
+    }
+
+    /**
+     * Get function that should be invoked on write event.
+     *
+     * @return callable
+     */
+    protected function getHandleWriteFunction()
+    {
+        return [ $this, 'handleWrite' ];
+    }
+
+    /**
+     *
+     */
+    private function writeEnd()
+    {
+        do
+        {
+            try
+            {
+                $sent = fwrite($this->resource, $this->buffer->peek());
+                $this->buffer->remove($sent);
+            }
+            catch (Error $ex)
+            {
+                $sent = 0;
+            }
+            catch (Exception $ex)
+            {
+                $sent = 0;
+            }
+        }
+        while (is_resource($this->resource) && $sent > 0 && !$this->buffer->isEmpty());
     }
 }

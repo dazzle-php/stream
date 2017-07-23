@@ -2,27 +2,28 @@
 
 namespace Dazzle\Stream\Test\TUnit;
 
+use Dazzle\Loop\LoopInterface;
 use Dazzle\Stream\Stream;
 
 class StreamTest extends StreamWriterTest
 {
-    public function testApiIsReadable_ReturnsTrue_ForReadableStream()
+    public function testApiPauseAndResumeAndIsPaused()
     {
         $stream = $this->createStreamMock();
-        $this->assertTrue($stream->isReadable());
+
+        $this->assertFalse($stream->isPaused());
+        $stream->pause();
+        $this->assertTrue($stream->isPaused());
+        $stream->resume();
+        $this->assertFalse($stream->isPaused());
     }
 
-    public function testApiIsReadable_ReturnsFalse_ForNotReadableStream()
+    public function testApiWriteAndRead()
     {
-        $stream = $this->createStreamMock();
-        $stream->close();
-        $this->assertFalse($stream->isReadable());
-    }
-
-    public function testApiRead_ReadsDataCorrectly()
-    {
-        $stream = $this->createStreamMock();
-        $resource = $stream->getResource();
+        $stream = $this->createStreamMock(
+            null,
+            $this->createWritableLoopMock()
+        );
 
         $expectedData = "foobar\n";
         $capturedData = null;
@@ -32,21 +33,48 @@ class StreamTest extends StreamWriterTest
             $capturedOrigin = $origin;
             $capturedData = $data;
         });
-        $stream->on('end', $this->expectCallableOnce());
+        $stream->on('drain', $this->expectCallableOnce());
 
-        fwrite($resource, $expectedData);
-        rewind($resource);
+        $stream->write($expectedData);
+        $stream->rewind();
+        $stream->handleRead($stream->getResource());
 
-        $this->assertSame($expectedData, $stream->read());
         $this->assertSame($expectedData, $capturedData);
         $this->assertSame($stream, $capturedOrigin);
     }
 
+    public function testApiHandleRead_ReturnsProperHandler()
+    {
+        $stream = $this->createStreamMock();
+
+        $expected = [ $stream, 'handleRead' ];
+        $actual = $this->callProtectedMethod($stream, 'getHandleReadFunction');
+
+        $this->assertSame($expected, $actual);
+        $this->assertTrue(is_callable($expected));
+    }
+
+    public function testApiHandleWrite_ReturnsProperHandler()
+    {
+        $stream = $this->createStreamMock();
+
+        $expected = [ $stream, 'handleWrite' ];
+        $actual = $this->callProtectedMethod($stream, 'getHandleWriteFunction');
+
+        $this->assertSame($expected, $actual);
+        $this->assertTrue(is_callable($expected));
+    }
+
     /**
+     * @param resource|null $resource
+     * @param LoopInterface|null $loop
      * @return Stream
      */
-    protected function createStreamInjection($resource)
+    protected function createStreamMock($resource = null, $loop = null)
     {
-        return new Stream($resource);
+        return new Stream(
+            is_null($resource) ? fopen('php://temp', 'r+') : $resource,
+            is_null($loop) ? $this->createLoopMock() : $loop
+        );
     }
 }

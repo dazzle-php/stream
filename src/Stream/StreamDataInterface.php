@@ -7,7 +7,7 @@ namespace Dazzle\Stream;
  * @event close : callable(object)
  * @event done  : callable(object)
  */
-interface StreamBaseInterface
+interface StreamDataInterface
 {
     /**
      * Return the wrapped resource.

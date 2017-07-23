@@ -2,10 +2,11 @@
 
 namespace Dazzle\Stream\Test\TModule\Stream;
 
-use Dazzle\Stream\Stream;
-use Dazzle\Stream\StreamReader;
-use Dazzle\Stream\StreamWriter;
+use Dazzle\Stream\StreamReaderInterface;
+use Dazzle\Stream\StreamWriterInterface;
+use Dazzle\Stream\Test\_Simulation\SimulationInterface;
 use Dazzle\Stream\Test\TModule;
+use ReflectionClass;
 
 /**
  * @runTestsInSeparateProcesses
@@ -17,71 +18,89 @@ class StreamTest extends TModule
     {
         $local = $this->basePath();
         unlink("$local/temp");
-
-        parent::tearDown();
     }
 
-    public function testStream_WriteAndReadDataScenario()
+    /**
+     * @dataProvider asyncStreamPairProvider
+     * @param string $readerClass
+     * @param string $writerClass
+     */
+    public function testStream_WritesAndReadsDataCorrectly($readerClass, $writerClass)
     {
-        $local = $this->basePath();
-        $writer = new Stream(fopen("file://$local/temp", 'w+'));
-        $reader = new Stream(fopen("file://$local/temp", 'r+'));
+        $this
+            ->simulate(function(SimulationInterface $sim) use($readerClass, $writerClass) {
+                $loop = $sim->getLoop();
+                $local = $this->basePath();
+                $cnt = 0;
 
-        $expectedData = "qwertyuiop\n";
-        $capturedData = null;
-        $readData = null;
+                $reader = (new ReflectionClass($readerClass))->newInstance(
+                    fopen("file://$local/temp", 'w+'),
+                    $loop
+                );
+                $reader->on('data', function(StreamReaderInterface $conn, $data) use($sim) {
+                    $sim->expect('data', $data);
+                    $conn->close();
+                });
+                $reader->on('end', $this->expectCallableOnce());
+                $reader->on('drain', $this->expectCallableNever());
+                $reader->on('finish', $this->expectCallableNever());
+                $reader->on('error', $this->expectCallableNever());
+                $reader->on('close', function() use($sim, &$cnt) {
+                    $sim->expect('close');
+                    if (++$cnt === 2)
+                    {
+                        $sim->done();
+                    }
+                });
 
-        $reader->on('data', function($origin, $data) use(&$capturedData) {
-            $capturedData = $data;
-        });
-        $reader->on('end', $this->expectCallableOnce());
-        $reader->on('error', $this->expectCallableNever());
-        $reader->on('close', $this->expectCallableOnce());
+                $writer = (new ReflectionClass($writerClass))->newInstance(
+                    fopen("file://$local/temp", 'r+'),
+                    $loop
+                );
+                $writer->on('data', $this->expectCallableNever());
+                $writer->on('end', $this->expectCallableNever());
+                $writer->on('drain', function(StreamWriterInterface $writer) use($sim) {
+                    $sim->expect('drain');
+                    $writer->close();
+                });
+                $writer->on('finish', $this->expectCallableOnce());
+                $writer->on('error', $this->expectCallableNever());
+                $writer->on('close', function() use($sim, &$cnt) {
+                    $sim->expect('close');
+                    if (++$cnt === 2)
+                    {
+                        $sim->done();
+                    }
+                });
 
-        $writer->on('drain', $this->expectCallableOnce());
-        $writer->on('finish', $this->expectCallableOnce());
-        $writer->on('error', $this->expectCallableNever());
-        $writer->on('close', $this->expectCallableOnce());
-
-        $writer->write($expectedData);
-        $readData = $reader->read();
-
-        $writer->close();
-        $reader->close();
-
-        $this->assertEquals($expectedData, $readData);
-        $this->assertEquals($expectedData, $capturedData);
+                $writer->write('message!');
+                $reader->read();
+            })
+            ->expect([
+                [ 'drain' ],
+                [ 'close' ],
+                [ 'data', 'message!' ],
+                [ 'close' ]
+            ])
+        ;
     }
 
-    public function testStreamReader_StreamWriter_WriteAndReadDataScenario()
+    /**
+     * Provider classes of Stream.
+     *
+     * @return string[][]
+     */
+    public function asyncStreamPairProvider()
     {
-        $local = $this->basePath();
-        $writer = new StreamWriter(fopen("file://$local/temp", 'w+'));
-        $reader = new StreamReader(fopen("file://$local/temp", 'r+'));
-
-        $expectedData = "qwertyuiop\n";
-        $capturedData = null;
-        $readData = null;
-
-        $reader->on('data', function($origin, $data) use(&$capturedData) {
-            $capturedData = $data;
-        });
-        $reader->on('drain', $this->expectCallableNever());
-        $reader->on('error', $this->expectCallableNever());
-        $reader->on('close', $this->expectCallableOnce());
-
-        $writer->on('data',  $this->expectCallableNever());
-        $writer->on('drain', $this->expectCallableOnce());
-        $writer->on('error', $this->expectCallableNever());
-        $writer->on('close', $this->expectCallableOnce());
-
-        $writer->write($expectedData);
-        $readData = $reader->read();
-
-        $writer->close();
-        $reader->close();
-
-        $this->assertEquals($expectedData, $readData);
-        $this->assertEquals($expectedData, $capturedData);
+        return [
+            [
+                'Dazzle\Stream\Stream',
+                'Dazzle\Stream\Stream'
+            ],
+            [
+                'Dazzle\Stream\StreamReader',
+                'Dazzle\Stream\StreamWriter'
+            ]
+        ];
     }
 }

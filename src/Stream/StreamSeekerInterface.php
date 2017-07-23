@@ -9,7 +9,7 @@ use Dazzle\Throwable\Exception\Runtime\WriteException;
 /**
  * @event seek : callable(object, int)
  */
-interface StreamSeekerInterface extends EventEmitterInterface, StreamBaseInterface
+interface StreamSeekerInterface extends EventEmitterInterface, StreamDataInterface
 {
     /**
      * Check if stream is seekable.

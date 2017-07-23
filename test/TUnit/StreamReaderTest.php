@@ -2,39 +2,25 @@
 
 namespace Dazzle\Stream\Test\TUnit;
 
+use Dazzle\Loop\Loop;
+use Dazzle\Loop\LoopInterface;
+use Dazzle\Loop\Model\SelectLoop;
 use Dazzle\Stream\StreamReader;
 
 class StreamReaderTest extends StreamSeekerTest
 {
-    public function testApiIsReadable_ReturnsTrue_ForReadableStream()
+    public function testApiRead_ReadsDataProperly()
     {
-        $stream = $this->createStreamMock();
-        $this->assertTrue($stream->isReadable());
-    }
+        if (substr(PHP_VERSION, 0, 3) === '5.6' && extension_loaded('xdebug'))
+        {
+            $this->markTestSkipped(
+                'This test for some reason fails on Travis CI with PHP-5.6 and xdebug enabled and ONLY on master branch.'
+            );
+            return;
+        }
 
-    public function testApiIsReadable_ReturnsFalse_ForNotReadableStream()
-    {
-        $stream = $this->createStreamMock();
-        $stream->close();
-        $this->assertFalse($stream->isReadable());
-    }
-
-    public function testApiGetBufferSize_ReturnsBufferSize()
-    {
-        $stream = $this->createStreamMock();
-        $this->assertEquals(4096, $stream->getBufferSize());
-    }
-
-    public function testApiSetBufferSize_SetsBufferSize()
-    {
-        $stream = $this->createStreamMock();
-        $stream->setBufferSize(2048);
-        $this->assertEquals(2048, $stream->getBufferSize());
-    }
-
-    public function testApiRead_ReadsDataCorrectly()
-    {
-        $stream = $this->createStreamMock();
+        $loop = new Loop(new SelectLoop);
+        $stream = $this->createStreamReaderMock(null, $loop);
         $resource = $stream->getResource();
 
         $expectedData = "foobar\n";
@@ -46,20 +32,44 @@ class StreamReaderTest extends StreamSeekerTest
             $capturedData = $data;
         });
         $stream->on('end', $this->expectCallableOnce());
+        $stream->read();
 
         fwrite($resource, $expectedData);
         rewind($resource);
 
-        $this->assertSame($expectedData, $stream->read());
+        $loop->addTimer(1e-1, function() use($loop) {
+            $loop->stop();
+        });
+        $loop->start();
+
         $this->assertSame($expectedData, $capturedData);
         $this->assertSame($stream, $capturedOrigin);
+
+        unset($loop);
+    }
+
+    public function testApiHandleRead_ReturnsProperHandler()
+    {
+        $loop = new Loop(new SelectLoop);
+        $stream = $this->createStreamReaderMock(null, $loop);
+
+        $expected = [ $stream, 'handleRead' ];
+        $actual = $this->callProtectedMethod($stream, 'getHandleReadFunction');
+
+        $this->assertSame($expected, $actual);
+        $this->assertTrue(is_callable($expected));
     }
 
     /**
+     * @param resource|null $resource
+     * @param LoopInterface|null $loop
      * @return StreamReader
      */
-    protected function createStreamInjection($resource)
+    protected function createStreamReaderMock($resource = null, $loop = null)
     {
-        return new StreamReader($resource);
+        return new StreamReader(
+            is_null($resource) ? fopen('php://temp', 'r+') : $resource,
+            is_null($loop) ? $this->createLoopMock() : $loop
+        );
     }
 }

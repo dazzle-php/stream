@@ -2,32 +2,53 @@
 
 namespace Dazzle\Stream;
 
-use Dazzle\Throwable\Exception\Runtime\ReadException;
+use Dazzle\Loop\LoopAwareTrait;
+use Dazzle\Loop\LoopInterface;
 use Dazzle\Throwable\Exception\Logic\InvalidArgumentException;
+use Dazzle\Throwable\Exception\Runtime\ReadException;
+use Error;
+use Exception;
 
-class StreamReader extends StreamSeeker implements StreamReaderInterface
+class StreamReader extends Sync\StreamReader implements StreamReaderInterface
 {
+    use LoopAwareTrait;
+
     /**
      * @var bool
      */
-    protected $readable;
+    protected $reading;
 
     /**
-     * @var int
+     * @var bool
      */
-    protected $bufferSize;
+    protected $readingStarted;
+
+    /**
+     * @var bool
+     */
+    protected $paused;
 
     /**
      * @param resource $resource
+     * @param LoopInterface $loop
      * @param bool $autoClose
      * @throws InvalidArgumentException
      */
-    public function __construct($resource, $autoClose = true)
+    public function __construct($resource, LoopInterface $loop, $autoClose = true)
     {
         parent::__construct($resource, $autoClose);
 
-        $this->readable = true;
-        $this->bufferSize = 4096;
+        if (function_exists('stream_set_read_buffer'))
+        {
+            stream_set_read_buffer($this->resource, 0);
+        }
+
+        $this->loop = $loop;
+        $this->reading = false;
+        $this->readingStarted = false;
+        $this->paused = true;
+
+        $this->resume();
     }
 
     /**
@@ -35,19 +56,21 @@ class StreamReader extends StreamSeeker implements StreamReaderInterface
      */
     public function __destruct()
     {
-        unset($this->readable);
-        unset($this->bufferSize);
-
         parent::__destruct();
+
+        unset($this->loop);
+        unset($this->reading);
+        unset($this->readingStarted);
+        unset($this->paused);
     }
 
     /**
      * @override
      * @inheritDoc
      */
-    public function isReadable()
+    public function isPaused()
     {
-        return $this->readable;
+        return $this->paused;
     }
 
     /**
@@ -72,6 +95,37 @@ class StreamReader extends StreamSeeker implements StreamReaderInterface
      * @override
      * @inheritDoc
      */
+    public function pause()
+    {
+        if (!$this->paused)
+        {
+            $this->paused = true;
+            $this->reading = false;
+            $this->loop->removeReadStream($this->resource);
+        }
+    }
+
+    /**
+     * @override
+     * @inheritDoc
+     */
+    public function resume()
+    {
+        if ($this->readable && $this->paused)
+        {
+            $this->paused = false;
+            if ($this->readingStarted)
+            {
+                $this->reading = true;
+                $this->loop->addReadStream($this->resource, $this->getHandleReadFunction());
+            }
+        }
+    }
+
+    /**
+     * @override
+     * @inheritDoc
+     */
     public function read($length = null)
     {
         if (!$this->readable)
@@ -81,49 +135,64 @@ class StreamReader extends StreamSeeker implements StreamReaderInterface
             );
         }
 
-        if ($length === null)
+        if (!$this->reading && !$this->paused)
         {
-            $length = $this->bufferSize;
+            $this->reading = true;
+            $this->readingStarted = true;
+            $this->loop->addReadStream($this->resource, $this->getHandleReadFunction());
         }
 
+        return '';
+    }
+
+    /**
+     * Handle the incoming stream.
+     *
+     * @internal
+     */
+    public function handleRead()
+    {
+        $length = $this->bufferSize;
         $ret = fread($this->resource, $length);
 
         if ($ret === false)
         {
-            return $this->throwAndEmitException(
-                new ReadException('Cannot read stream.')
-            );
+            $this->emit('error', [ $this, new ReadException('Error occurred while reading from the stream resource.') ]);
+            return;
         }
-        else if ($ret !== '')
+
+        if ($ret !== '')
         {
             $this->emit('data', [ $this, $ret ]);
 
             if (strlen($ret) < $length)
             {
+                $this->loop->removeReadStream($this->resource);
+                $this->reading = false;
                 $this->emit('end', [ $this ]);
             }
         }
-
-        return $ret;
     }
 
     /**
-     * @override
-     * @inheritDoc
+     * Get function that should be invoked on read event.
+     *
+     * @return callable
      */
-    public function close()
+    protected function getHandleReadFunction()
     {
-        if ($this->closing)
-        {
-            return;
-        }
+        return [ $this, 'handleRead' ];
+    }
 
-        $this->closing = true;
-        $this->readable = false;
-        $this->writable = false;
+    /**
+     * Handle close.
+     *
+     * @internal
+     */
+    public function handleClose()
+    {
+        $this->pause();
 
-        $this->emit('close', [ $this ]);
-        $this->handleClose();
-        $this->emit('done', [ $this ]);
+        parent::handleClose();
     }
 }

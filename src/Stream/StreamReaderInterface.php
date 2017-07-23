@@ -2,43 +2,7 @@
 
 namespace Dazzle\Stream;
 
-use Dazzle\Event\EventEmitterInterface;
+use Dazzle\Loop\LoopResourceInterface;
 
-/**
- * @event data : callable(object, string)
- * @event end  : callable(object)
- */
-interface StreamReaderInterface extends EventEmitterInterface, StreamSeekerInterface
-{
-    /**
-     * Check if stream is readable.
-     *
-     * @return bool
-     */
-    public function isReadable();
-
-    /**
-     * Read the contents of the string.
-     *
-     * Read the contents of the string. $length specifies maximum number of bytes read. If it is not set whole contents
-     * will be read.
-     *
-     * @param int|null $length
-     * @return string
-     */
-    public function read($length = null);
-
-    /**
-     * Set the size of stream buffer in bytes.
-     *
-     * @param int $bufferSize
-     */
-    public function setBufferSize($bufferSize);
-
-    /**
-     * Get the current size of stream buffer.
-     *
-     * @return int
-     */
-    public function getBufferSize();
-}
+interface StreamReaderInterface extends Sync\StreamReaderInterface, LoopResourceInterface
+{}
