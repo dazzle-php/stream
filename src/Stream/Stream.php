@@ -328,7 +328,7 @@ class Stream extends Sync\Stream implements StreamInterface
         {
             try
             {
-                $sent = fwrite($this->resource, $this->buffer->peek());
+                $sent = @fwrite($this->resource, $this->buffer->peek());
                 $this->buffer->remove($sent);
             }
             catch (Error $ex)

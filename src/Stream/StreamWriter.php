@@ -237,7 +237,7 @@ class StreamWriter extends Sync\StreamWriter implements StreamWriterInterface
         {
             try
             {
-                $sent = fwrite($this->resource, $this->buffer->peek());
+                $sent = @fwrite($this->resource, $this->buffer->peek());
                 $this->buffer->remove($sent);
             }
             catch (Error $ex)
